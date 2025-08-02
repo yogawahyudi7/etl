@@ -243,9 +243,9 @@ bash realtime_processing_run.sh
 ```
 Dari menu interaktif:
 1. Pilih opsi 1 untuk membuat topic Kafka
-2. Pilih opsi 2 untuk mengirim contoh pesan
+2. Pilih opsi 2 untuk mengirim pesan product view
 3. Pilih opsi 3 untuk menjalankan consumer Kafka
-4. Pilih opsi 4 untuk memproses hasil dengan SQL
+4. Pilih opsi 4 untuk melihat hasil agregasi real-time
 
 ### Langkah 3: Jalankan Tugas Analisis SQL
 ```bash
@@ -273,10 +273,10 @@ bash etl_pipeline_run.sh --stop
    - Sample data generation untuk simulasi
 
 2. **Real-time Processing** (`real-time-processing/`)
-   - Kafka consumer untuk stream processing
-   - Producer untuk mengirim data ke Kafka
-   - Consumer untuk memproses data dan menyimpan ke PostgreSQL
-   - SQL processing untuk analisis hasil data real-time
+   - Kafka consumer untuk pemrosesan stream product view
+   - Producer untuk mengirim event product view ke Kafka
+   - Agregasi real-time product views di PostgreSQL
+   - SQL processing untuk analitik pada data teragregasi
 
 3. **SQL Tasks** (`sql/`)
    - Database queries dan optimizations
@@ -294,22 +294,80 @@ bash etl_pipeline_run.sh --stop
    - Script untuk optimasi performa
 
 ## 🔄 Real-time Processing
-Pipeline real-time menggunakan Kafka untuk stream processing:
 
-1. **Producer**: Mengirim data clickstream ke topic Kafka
-2. **Consumer**: Memproses messages dari Kafka dan menyimpan ke PostgreSQL
-3. **Processing**: SQL script memproses data untuk analitik
+Pipeline real-time menggunakan Kafka untuk stream processing dengan consumer khusus untuk analitik product view:
 
-Menjalankan real-time processing:
+### 🎯 Fitur Consumer
+
+**Enhanced Consumer** (`consumer_script.py`)
+- Memproses event product view dari topic `SPE-testcase`
+- Agregasi jumlah view produk secara real-time
+- Menggunakan connection pooling untuk performa yang lebih baik
+- Otomatis membuat tabel `product_views` dengan:
+  - `product_id`: Identifier produk unik
+  - `view_count`: Jumlah view teragregasi per produk
+  - `updated_at`: Timestamp update terakhir
+
+### 🚀 Menjalankan Real-time Processing
+
 ```bash
 bash realtime_processing_run.sh
 ```
 
-Menu interaktif akan muncul dengan opsi:
-- Membuat Kafka topic
-- Mengirim sample messages
-- Menjalankan Kafka consumer
-- Memproses hasil dengan SQL
+Saat dijalankan, script akan menampilkan status real-time:
+
+```
+🔍 Status Saat Ini:
+  ✅ Kafka topic 'SPE-testcase' ada
+  ✅ Tabel product views ada dengan 3 produk
+
+📋 Opsi Yang Tersedia:
+```
+
+**Opsi Menu Interaktif:**
+1. **Buat topic Kafka** - Menyiapkan topic `SPE-testcase` untuk product views
+2. **Produksi pesan product view** - Mengirim 8 contoh event product view untuk agregasi
+3. **Jalankan consumer Kafka** - Memproses product views dengan agregasi real-time (berjalan terus-menerus)
+4. **Lihat tabel product views** - Menampilkan data teragregasi dengan analitik dan level popularitas
+5. **Proses hasil dengan SQL** - Menampilkan semua data product views menggunakan file SQL
+6. **Jalankan semua langkah berurutan** - Setup otomatis dan produksi pesan
+7. **Keluar**
+
+**Fitur Enhanced:**
+- 🔍 **Display Status Real-time** - Menampilkan status topic dan tabel saat ini
+- 📊 **Dashboard Analitik** - View counts dengan level popularitas (Low/Medium/High)
+- 📈 **Statistik Ringkasan** - Total produk, views, rata-rata, dan maksimum
+- 🔄 **Smart Error Handling** - Memeriksa dependensi dan memberikan panduan yang membantu
+- 💡 **Panduan Workflow** - Proses langkah-demi-langkah yang direkomendasikan
+
+### 🎪 Contoh Penggunaan
+
+**Untuk Analitik Product View:**
+1. Pilih opsi **1** (Buat topic)
+2. Pilih opsi **2** (Kirim pesan product view)
+3. Pilih opsi **3** (Jalankan consumer) - biarkan terus berjalan
+4. Di terminal lain, pilih opsi **4** (Lihat hasil) untuk melihat agregasi real-time
+
+### 🔧 Variabel Environment
+
+Consumer (`consumer_script.py`) menggunakan variabel environment ini (diatur otomatis oleh script):
+- `POSTGRES_DB=clickstream_db`
+- `POSTGRES_USER=etl_user` 
+- `POSTGRES_PASSWORD=secure_password_123`
+- `DB_HOST=localhost`
+- `DB_PORT=5433`
+
+### 📊 Format Pesan Sample
+
+**Event Product View:**
+```json
+{
+  "product_id": "PROD-1001",
+  "event": "view",
+  "timestamp": "1643723400",
+  "user_id": "USER-201"
+}
+```
 
 ## 🔍 Troubleshooting Tambahan
 ### Masalah Umum:

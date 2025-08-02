@@ -63,11 +63,11 @@ create_kafka_topic() {
     echo "Waiting 3 seconds for Kafka to be fully operational..."
     sleep 3
     
-    echo "Creating 'clickstream_data' topic if it doesn't exist..."
-    if ! docker-compose exec -T broker kafka-topics --create --if-not-exists --bootstrap-server broker:9093 --replication-factor 1 --partitions 1 --topic clickstream_data; then
-        warning "Failed to create topic. Waiting another 5 seconds and trying again..."
+    echo "Creating 'SPE-testcase' topic for product views if it doesn't exist..."
+    if ! docker-compose exec -T broker kafka-topics --create --if-not-exists --bootstrap-server broker:9093 --replication-factor 1 --partitions 1 --topic SPE-testcase; then
+        warning "Failed to create SPE-testcase topic. Waiting another 5 seconds and trying again..."
         sleep 5
-        docker-compose exec -T broker kafka-topics --create --if-not-exists --bootstrap-server broker:9093 --replication-factor 1 --partitions 1 --topic clickstream_data || error "Could not create Kafka topic after retry"
+        docker-compose exec -T broker kafka-topics --create --if-not-exists --bootstrap-server broker:9093 --replication-factor 1 --partitions 1 --topic SPE-testcase || error "Could not create SPE-testcase topic after retry"
     fi
     
     success "Kafka topic ready"
@@ -75,64 +75,171 @@ create_kafka_topic() {
 
 # Run Kafka consumer
 run_consumer() {
-    section "Running Kafka Consumer"
+    section "Running Kafka Consumer (Product Views)"
     
-    echo "Starting consumer_script.py to process real-time data..."
+    echo "Starting consumer_script.py to process product view events..."
+    echo "This consumer tracks product views and stores aggregated data in PostgreSQL"
     echo "Press Ctrl+C to stop the consumer"
     
-    # Install required packages if needed
-    pip install -r real-time-processing/requirements.txt
+    # Try to install Python dependencies locally
+    echo "Installing Python dependencies..."
+    if command -v pip3 >/dev/null 2>&1; then
+        pip3 install -r real-time-processing/requirements.txt
+    elif command -v pip >/dev/null 2>&1; then
+        pip install -r real-time-processing/requirements.txt
+    else
+        warning "Python pip not found. Please install Python dependencies manually:"
+        echo "pip install confluent_kafka psycopg2-binary"
+    fi
     
-    # Run the consumer script
-    python real-time-processing/consumer_script.py
+    echo "Starting consumer (use Ctrl+C to stop)..."
+    # Set environment variables for database connection
+    export POSTGRES_DB="clickstream_db"
+    export POSTGRES_USER="etl_user"
+    export POSTGRES_PASSWORD="secure_password_123"
+    export DB_HOST="localhost"
+    export DB_PORT="5433"
+    export KAFKA_BOOTSTRAP_SERVERS="localhost:9092"
+    
+    # Try to run with python3 first, then python
+    if command -v python3 >/dev/null 2>&1; then
+        python3 real-time-processing/consumer_script.py
+    elif command -v python >/dev/null 2>&1; then
+        python real-time-processing/consumer_script.py
+    else
+        error "Python not found. Please install Python 3.x and required dependencies."
+    fi
 }
 
-# Produce sample messages
+# Produce sample product view messages
 produce_sample_messages() {
-    section "Producing Sample Messages"
+    section "Producing Product View Messages"
     
-    echo "Sending sample messages to 'clickstream_data' topic..."
-    for i in {1..5}; do
-        message="{\"user_id\": $((100+$i)), \"timestamp\": \"$(date +%s)\", \"page\": \"/product-$i\", \"action\": \"view\"}"
-        docker-compose exec -T broker bash -c "echo '$message' | kafka-console-producer --broker-list broker:9093 --topic clickstream_data"
+    echo "Sending product view messages to 'SPE-testcase' topic..."
+    
+    # Get current timestamp
+    current_timestamp=$(date +%s)
+    
+    # Define messages as array
+    messages=(
+        "{\"product_id\": \"PROD-1001\", \"event\": \"view\", \"timestamp\": \"$current_timestamp\", \"user_id\": \"USER-201\"}"
+        "{\"product_id\": \"PROD-1002\", \"event\": \"view\", \"timestamp\": \"$current_timestamp\", \"user_id\": \"USER-202\"}"
+        "{\"product_id\": \"PROD-1003\", \"event\": \"view\", \"timestamp\": \"$current_timestamp\", \"user_id\": \"USER-203\"}"
+        "{\"product_id\": \"PROD-1001\", \"event\": \"view\", \"timestamp\": \"$current_timestamp\", \"user_id\": \"USER-204\"}"
+        "{\"product_id\": \"PROD-1002\", \"event\": \"view\", \"timestamp\": \"$current_timestamp\", \"user_id\": \"USER-205\"}"
+        "{\"product_id\": \"PROD-1004\", \"event\": \"view\", \"timestamp\": \"$current_timestamp\", \"user_id\": \"USER-206\"}"
+        "{\"product_id\": \"PROD-1001\", \"event\": \"view\", \"timestamp\": \"$current_timestamp\", \"user_id\": \"USER-207\"}"
+        "{\"product_id\": \"PROD-1005\", \"event\": \"view\", \"timestamp\": \"$current_timestamp\", \"user_id\": \"USER-208\"}"
+    )
+    
+    for message in "${messages[@]}"; do
+        echo "$message" | docker-compose exec -T broker kafka-console-producer --broker-list broker:9093 --topic SPE-testcase
         echo "Sent: $message"
-        sleep 1
+        sleep 0.5
     done
     
-    success "Sample messages sent to Kafka"
+    success "Product view messages sent to SPE-testcase topic"
+    echo "Messages sent: ${#messages[@]} total"
 }
 
 # Process results with SQL
 process_results() {
     section "Processing Results with SQL"
     
-    echo "Running SQL processing script..."
+    echo "Displaying all product views data..."
     docker-compose exec -T postgres bash -c "psql -U etl_user -d clickstream_db -f /tmp/proceed_result.sql"
     
-    success "Results processed successfully"
+    success "Product views data displayed successfully"
+}
+
+# View product views table
+view_product_views() {
+    section "Product Views Data"
+    
+    echo "Checking if product_views table exists..."
+    table_exists=$(docker-compose exec -T postgres psql -U etl_user -d clickstream_db -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'product_views');" | grep -o 't\|f' | head -1)
+    
+    if [ "$table_exists" = "t" ]; then
+        echo "Viewing current product views data..."
+        docker-compose exec -T postgres psql -U etl_user -d clickstream_db -c "
+            SELECT 
+                product_id,
+                view_count,
+                updated_at,
+                CASE 
+                    WHEN view_count = 1 THEN 'Low'
+                    WHEN view_count <= 3 THEN 'Medium'
+                    ELSE 'High'
+                END as popularity_level
+            FROM product_views 
+            ORDER BY view_count DESC, updated_at DESC;
+        "
+        
+        # Show summary statistics
+        echo -e "\\n--- Summary Statistics ---"
+        docker-compose exec -T postgres psql -U etl_user -d clickstream_db -c "
+            SELECT 
+                COUNT(*) as total_products,
+                SUM(view_count) as total_views,
+                AVG(view_count)::numeric(10,2) as avg_views_per_product,
+                MAX(view_count) as max_views
+            FROM product_views;
+        "
+        success "Product views data displayed with analytics"
+    else
+        warning "Product views table does not exist yet."
+        echo "This means either:"
+        echo "1. No consumer has been run yet"
+        echo "2. No messages have been processed"
+        echo "Run option 2 (produce messages) and 3 (run consumer) first."
+    fi
 }
 
 # Show menu
 show_menu() {
     section "Real-time Processing Menu"
-    echo "1. Create Kafka topic"
-    echo "2. Produce sample messages"
-    echo "3. Run Kafka consumer (Ctrl+C to stop)"
-    echo "4. Process results with SQL"
-    echo "5. Run all steps in sequence"
-    echo "6. Exit"
+    
+    # Show current status
+    echo "🔍 Current Status:"
+    topic_exists=$(docker-compose exec -T broker kafka-topics --list --bootstrap-server broker:9093 2>/dev/null | grep "SPE-testcase" || echo "")
+    if [ -n "$topic_exists" ]; then
+        echo "  ✅ Kafka topic 'SPE-testcase' exists"
+    else
+        echo "  ❌ Kafka topic needs to be created"
+    fi
+    
+    table_exists=$(docker-compose exec -T postgres psql -U etl_user -d clickstream_db -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'product_views');" 2>/dev/null | grep -o 't\|f' | head -1 || echo "f")
+    if [ "$table_exists" = "t" ]; then
+        row_count=$(docker-compose exec -T postgres psql -U etl_user -d clickstream_db -c "SELECT COUNT(*) FROM product_views;" 2>/dev/null | grep -o '[0-9]*' | head -1 || echo "0")
+        echo "  ✅ Product views table exists with $row_count products"
+    else
+        echo "  ❌ Product views table not created yet"
+    fi
     echo
-    read -p "Select an option (1-6): " choice
+    
+    echo "📋 Available Options:"
+    echo "1. Create Kafka topic (SPE-testcase)"
+    echo "2. Produce product view messages (8 sample messages)"
+    echo "3. Run Kafka consumer (product views aggregation)"
+    echo "4. View product views table (with analytics)"
+    echo "5. Process results with SQL (display all data)"
+    echo "6. Run all steps in sequence (automated workflow)"
+    echo "7. Exit"
+    echo
+    echo "💡 Recommended workflow: 1 → 2 → 3 (keep running) → 4 (in new terminal)"
+    echo
+    read -p "Select an option (1-7): " choice
     echo
     
     case $choice in
         1) create_kafka_topic && show_menu ;;
         2) produce_sample_messages && show_menu ;;
         3) run_consumer && show_menu ;;
-        4) process_results && show_menu ;;
-        5) run_all_steps && show_menu ;;
-        6) exit 0 ;;
-        *) warning "Invalid option" && show_menu ;;
+        4) view_product_views && show_menu ;;
+        5) process_results && show_menu ;;
+        6) run_all_steps && show_menu ;;
+        7) exit 0 ;;
+        *) warning "Invalid option. Please select 1-7." && show_menu ;;
     esac
 }
 
@@ -145,8 +252,8 @@ run_all_steps() {
     docker cp real-time-processing/proceed_result.sql postgres:/tmp/proceed_result.sql
     
     produce_sample_messages
-    run_consumer
-    process_results
+    
+    echo "Sample messages sent. You can now run the consumer with option 3."
     
     show_menu
 }

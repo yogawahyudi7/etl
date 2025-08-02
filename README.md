@@ -243,9 +243,9 @@ bash realtime_processing_run.sh
 ```
 From the interactive menu:
 1. Select option 1 to create Kafka topic
-2. Select option 2 to send sample messages
+2. Select option 2 to send product view messages
 3. Select option 3 to run Kafka consumer
-4. Select option 4 to process results with SQL
+4. Select option 4 to view real-time aggregated results
 
 ### Step 3: Run SQL Analytical Tasks
 ```bash
@@ -273,10 +273,10 @@ bash etl_pipeline_run.sh --stop
    - Sample data generation for simulation
 
 2. **Real-time Processing** (`real-time-processing/`)
-   - Kafka consumer for stream processing
-   - Producer for sending data to Kafka
-   - Consumer for processing data and storing in PostgreSQL
-   - SQL processing for real-time data analysis
+   - Kafka consumer for product view stream processing
+   - Producer for sending product view events to Kafka
+   - Real-time aggregation of product views in PostgreSQL
+   - SQL processing for analytics on aggregated data
 
 3. **SQL Tasks** (`sql/`)
    - Database queries and optimizations
@@ -294,22 +294,70 @@ bash etl_pipeline_run.sh --stop
    - Script for performance optimization
 
 ## 🔄 Real-time Processing
-The real-time pipeline uses Kafka for stream processing:
 
-1. **Producer**: Sends clickstream data to Kafka topic
-2. **Consumer**: Processes messages from Kafka and stores them in PostgreSQL
-3. **Processing**: SQL script processes data for analytics
+The real-time pipeline uses Kafka for stream processing with a dedicated consumer for product view analytics:
 
-Running real-time processing:
+### 🎯 Consumer Features
+
+**Enhanced Consumer** (`consumer_script.py`)
+- Processes product view events from `SPE-testcase` topic
+- Aggregates product view counts in real-time
+- Uses connection pooling for better performance
+- Automatically creates `product_views` table with:
+  - `product_id`: Unique product identifier
+  - `view_count`: Aggregated view count per product
+  - `updated_at`: Last update timestamp
+
+### 🚀 Running Real-time Processing
+
 ```bash
 bash realtime_processing_run.sh
 ```
 
-An interactive menu will appear with options:
-- Create Kafka topic
-- Send sample messages
-- Run Kafka consumer
-- Process results with SQL
+**Interactive Menu Options:**
+1. **Create Kafka topic** - Sets up `SPE-testcase` topic for product views
+2. **Produce product view messages** - Sends 8 sample product view events for aggregation
+3. **Run Kafka consumer** - Processes product views with real-time aggregation (runs continuously)
+4. **View product views table** - Shows aggregated data with analytics and popularity levels
+5. **Process results with SQL** - Displays all product views data using SQL file
+6. **Run all steps in sequence** - Automated setup and message production
+7. **Exit**
+
+**Enhanced Features:**
+- 🔍 **Real-time Status Display** - Shows current topic and table status
+- 📊 **Analytics Dashboard** - View counts with popularity levels (Low/Medium/High)
+- 📈 **Summary Statistics** - Total products, views, averages, and maximums
+- 🔄 **Smart Error Handling** - Checks dependencies and provides helpful guidance
+- 💡 **Workflow Guidance** - Recommended step-by-step process
+
+### 🎪 Usage Example
+
+**For Product View Analytics:**
+1. Choose option **1** (Create topic)
+2. Choose option **2** (Send product view messages)
+3. Choose option **3** (Run consumer) - keep this running
+4. In another terminal, choose option **4** (View results) to see real-time aggregation
+
+### 🔧 Environment Variables
+
+The consumer (`consumer_script.py`) uses these environment variables (automatically set by the script):
+- `POSTGRES_DB=clickstream_db`
+- `POSTGRES_USER=etl_user` 
+- `POSTGRES_PASSWORD=secure_password_123`
+- `DB_HOST=localhost`
+- `DB_PORT=5433`
+
+### 📊 Sample Message Format
+
+**Product View Event:**
+```json
+{
+  "product_id": "PROD-1001",
+  "event": "view",
+  "timestamp": "1643723400",
+  "user_id": "USER-201"
+}
+```
 
 ## 🔍 Additional Troubleshooting
 ### Common Issues:
